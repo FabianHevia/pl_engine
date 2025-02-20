@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mi Juego de Plataformas</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #333;
+        }
+        canvas {
+            background-color: #87CEEB;
+            border: 4px solid #000;
+        }
+        .game-container {
+            text-align: center;
+        }
+        .instructions {
+            color: white;
+            margin-top: 20px;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div class="instructions">
+            <p>Usa las flechas ← → para moverte y ESPACIO para saltar</p>
+            <p>Recoge todas las monedas para ganar!</p>
+        </div>
+    </div>
+
+    <script>
+        // Motor de juego (código del artifact anterior)
+        class GameEngine {
+            constructor(canvasId) {
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext('2d');
+                this.entities = [];
+                this.gravity = 0.5;
+                this.keys = {};
+                this.score = 0;
+                
+                window.addEventListener('keydown', (e) => this.keys[e.code] = true);
+                window.addEventListener('keyup', (e) => this.keys[e.code] = false);
+            }
+
+            addEntity(entity) {
+                this.entities.push(entity);
+            }
+
+            removeEntity(entity) {
+                const index = this.entities.indexOf(entity);
+                if (index > -1) {
+                    this.entities.splice(index, 1);
+                }
+            }
+
+            gameLoop() {
+                this.update();
+                this.render();
+                requestAnimationFrame(() => this.gameLoop());
+            }
+
+            update() {
+                for (let entity of this.entities) {
+                    if (entity.hasGravity) {
+                        entity.velocityY += this.gravity;
+                    }
+                    
+                    entity.update(this);
+                    
+                    for (let other of this.entities) {
+                        if (entity !== other) {
+                            if (this.checkCollision(entity, other)) {
+                                entity.onCollision(other);
+                            }
+                        }
+                    }
+                }
+            }
+
+            render() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Dibujar el fondo
+                this.ctx.fillStyle = '#87CEEB';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Dibujar entidades
+                for (let entity of this.entities) {
+                    entity.render(this.ctx);
+                }
+
+                // Dibujar puntuación
+                this.ctx.fillStyle = 'black';
+                this.ctx.font = '24px Arial';
+                this.ctx.fillText(`Monedas: ${this.score}/5`, 20, 40);
+            }
+
+            checkCollision(entity1, entity2) {
+                return entity1.x < entity2.x + entity2.width &&
+                       entity1.x + entity1.width > entity2.x &&
+                       entity1.y < entity2.y + entity2.height &&
+                       entity1.y + entity1.height > entity2.y;
+            }
+
+            start() {
+                this.gameLoop();
+            }
+        }
+
+        class GameObject {
+            constructor(x, y, width, height, color) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+                this.color = color;
+                this.velocityX = 0;
+                this.velocityY = 0;
+                this.hasGravity = false;
+            }
+
+            update(engine) {
+                this.x += this.velocityX;
+                this.y += this.velocityY;
+            }
+
+            render(ctx) {
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+            }
+
+            onCollision(other) {}
+        }
+
+        class Player extends GameObject {
+            constructor(x, y) {
+                super(x, y, 32, 32, 'red');
+                this.hasGravity = true;
+                this.jumpForce = -12;
+                this.moveSpeed = 5;
+                this.isJumping = false;
+            }
+
+            update(engine) {
+                if (engine.keys['ArrowLeft']) {
+                    this.velocityX = -this.moveSpeed;
+                } else if (engine.keys['ArrowRight']) {
+                    this.velocityX = this.moveSpeed;
+                } else {
+                    this.velocityX = 0;
+                }
+
+                if (engine.keys['Space'] && !this.isJumping) {
+                    this.velocityY = this.jumpForce;
+                    this.isJumping = true;
+                }
+
+                // Límites del canvas
+                if (this.x < 0) this.x = 0;
+                if (this.x > engine.canvas.width - this.width) {
+                    this.x = engine.canvas.width - this.width;
+                }
+
+                super.update(engine);
+            }
+
+            onCollision(other) {
+                if (other instanceof Platform) {
+                    if (this.velocityY > 0) {
+                        this.y = other.y - this.height;
+                        this.velocityY = 0;
+                        this.isJumping = false;
+                    }
+                } else if (other instanceof Coin) {
+                    game.removeEntity(other);
+                    game.score++;
+                    if (game.score >= 5) {
+                        alert('¡Felicitaciones! ¡Has ganado!');
+                        location.reload();
+                    }
+                }
+            }
+        }
+
+        class Platform extends GameObject {
+            constructor(x, y, width) {
+                super(x, y, width, 16, 'green');
+            }
+        }
+
+        class Coin extends GameObject {
+            constructor(x, y) {
+                super(x, y, 20, 20, 'gold');
+            }
+
+            render(ctx) {
+                ctx.beginPath();
+                ctx.arc(this.x + 10, this.y + 10, 10, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.closePath();
+            }
+        }
+
+        // Inicializar el juego
+        const game = new GameEngine('gameCanvas');
+
+        // Crear jugador
+        const player = new Player(100, 100);
+        game.addEntity(player);
+
+        // Crear plataformas
+        const platforms = [
+            new Platform(50, 400, 200),
+            new Platform(300, 300, 200),
+            new Platform(600, 400, 150),
+            new Platform(100, 200, 150),
+            new Platform(400, 500, 300)
+        ];
+        platforms.forEach(platform => game.addEntity(platform));
+
+        // Crear monedas
+        const coins = [
+            new Coin(100, 150),
+            new Coin(400, 250),
+            new Coin(650, 350),
+            new Coin(200, 350),
+            new Coin(500, 450)
+        ];
+        coins.forEach(coin => game.addEntity(coin));
+
+        // Iniciar el juego
+        game.start();
+    </script>
+</body>
+</html>
